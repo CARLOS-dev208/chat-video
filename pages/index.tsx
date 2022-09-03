@@ -16,7 +16,7 @@ const Home: NextPage = () => {
     });
   };
 
-  return <h1>Heloo</h1>;
+  return <h1>Heloo 123</h1>;
 };
 
 export default Home;
