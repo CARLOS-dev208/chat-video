@@ -1,23 +1,8 @@
-import { useEffect } from 'react';
-import io from 'socket.io-client';
-
 import type { NextPage } from "next";
-let socket;
+import APP from "../components/app";
 
 const Home: NextPage = () => {
-   useEffect(() => {
-      socketInitializer();
-   }, []);
-
-   const socketInitializer = async () => {
-      await fetch("/api/socket");
-      socket = io();
-      socket.on("newIncomingMessage", (msg) => {
-         console.log(msg);
-      });
-   };
-
-   return <h1>Helooo</h1>;
+   return <APP/>;
 };
 
 export default Home;
