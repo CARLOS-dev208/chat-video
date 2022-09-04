@@ -8,5 +8,5 @@ export default function Index(){
       console.log(socket, isMobile)
    }, []);
 
-   return <h1>Helo!!!!</h1>
+   return <h1>Helo!!!</h1>
 }
