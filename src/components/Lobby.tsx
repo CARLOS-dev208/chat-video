@@ -1,7 +1,9 @@
 import styles from '../styles/Lobby.module.css';
 import ArrowButton from '../../public/arrow.svg'
 import type { NextPage } from "next";
+import { useRouter } from 'next/router';
 export const Lobby: NextPage = () => {
+    const router = useRouter()
     return (
         <main id="room__lobby__container">
             <div className={styles.form__container}>
@@ -18,7 +20,7 @@ export const Lobby: NextPage = () => {
                         <input type="text" name="room" required placeholder="Enter room name..." />
                     </div>
                     <div className={styles.form__field__wrapper}>
-                        <button type="submit">Go to Room
+                        <button type="submit" onClick={() => router.push('/room')}>Go to Room
                             <ArrowButton />
                         </button>
                     </div>

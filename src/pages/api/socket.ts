@@ -10,10 +10,16 @@ export default function SocketHandler(req: NextApiRequest, res: NextApiResponseS
   if (!res.socket.server.io) {
     const httpServer: NetServer = res.socket.server as any;
     const io = new ServerIO(httpServer, {path: "/api/socket",});
-    io.on("connection", (socket: any) => {
-      setInterval(() => socket.emit("teste", "hahha"), 10 * 1000);
-    });
+    eventSource(io)
     res.socket.server.io = io;
   }
   res.end();
+}
+
+function eventSource(io: ServerIO){
+  io.on("connection", (socket: any) => {
+    console.log(`connection - ${socket.id}`)
+    socket.join('room1')
+    setInterval(() => socket.to('room1').emit("teste", socket.id), 10 * 1000);
+  });
 }

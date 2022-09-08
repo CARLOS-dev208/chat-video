@@ -8,7 +8,6 @@ module.exports = {
       issuer: /\.[jt]sx?$/,
       use: ['@svgr/webpack'],
     })
-
     return config
   },
 }

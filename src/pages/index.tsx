@@ -1,12 +1,16 @@
+import { useContext } from 'react';
+
 import { Header } from '../components/Header';
+import { Lobby } from '../components/Lobby';
+import { SocketContext } from '../context/Context';
 
 import type { NextPage } from "next";
-import { Lobby } from '../components/Lobby';
 const Home: NextPage = () => {
+  useContext(SocketContext);
   return (
     <>
-      <Header/>
-      <Lobby/>
+      <Header />
+      <Lobby />
     </>
   );
 };
