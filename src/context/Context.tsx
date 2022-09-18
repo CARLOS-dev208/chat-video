@@ -1,21 +1,32 @@
-import { createContext, ReactNode, useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import { createContext, ReactNode, useEffect, useMemo, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 
-const socket = io({ path: "/api/socket" });             
+import { RoomUser } from '../types/room-user';
+
+
 type ContextProviderProps = {
     children: ReactNode;
 };
 type ContextData = {
-    startCountdown: () => void;
+    socket: Socket,
+    me: RoomUser
 };
 const SocketContext = createContext({} as ContextData);
-
 const ContextProvider = ({ children }: ContextProviderProps) => {
+    const [me, setMe] = useState<RoomUser>({} as RoomUser);
+    const socket = useMemo(() => io({ path: "/api/socket" }), []);
     useEffect(() => {
-        socket.on("teste", (e) => console.log(e));
-    }, []);
+        const me = JSON.parse(localStorage.getItem('usuario')!);
+        socket.emit("select_room", me);
+        setMe(me)
+        console.log('Context: ', socket);
+        return () => {
+            console.log('disconnect: ', socket)
+            socket.disconnect();
+        }
+    }, [socket]);
     return (
-        <SocketContext.Provider value={{ startCountdown: () => {}}}>
+        <SocketContext.Provider value={{socket, me}}>
             {children}
         </SocketContext.Provider>
     );
