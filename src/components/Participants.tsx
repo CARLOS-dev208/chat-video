@@ -10,7 +10,6 @@ export const Participants: NextPage = () => {
   const [participantes, setParticipantes] = useState<RoomUser[]>([]);
   useEffect(() => {
     socket.on("participants", (usuarios: RoomUser[]) => {
-      console.log(usuarios);
       new Audio("/notification.mp3").play();
       setParticipantes(usuarios)
     });

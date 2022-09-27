@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useEffect, useMemo, useState } from 'react';
+import { createContext, MutableRefObject, ReactNode, SetStateAction, useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 
 import { RoomUser } from '../types/room-user';
@@ -9,24 +9,28 @@ type ContextProviderProps = {
 };
 type ContextData = {
     socket: Socket,
-    me: RoomUser
+    me: RoomUser | null,
+    myVideo: MutableRefObject<HTMLVideoElement | null | undefined>;
+    stream: MediaStream | null
 };
+const constraints = { audio: true, video: { width: 300, height: 300 } };
 const SocketContext = createContext({} as ContextData);
 const ContextProvider = ({ children }: ContextProviderProps) => {
-    const [me, setMe] = useState<RoomUser>({} as RoomUser);
     const socket = useMemo(() => io({ path: "/api/socket" }), []);
+    const [me, setMe] = useState<RoomUser | null>(null);
+    const [stream, setStream] = useState<MediaStream | null>(null);
+    const myVideo = useRef<HTMLVideoElement | null>();
     useEffect(() => {
-        const me = JSON.parse(localStorage.getItem('usuario')!);
-        socket.emit("select_room", me);
-        setMe(me)
-        console.log('Context: ', socket);
-        return () => {
-            console.log('disconnect: ', socket)
-            socket.disconnect();
-        }
+        navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+            setStream(stream)
+            const me = JSON.parse(localStorage.getItem('usuario')!);
+            socket.emit("select_room", me);
+            setMe(me)
+        });
+        return () => { socket.disconnect() }
     }, [socket]);
     return (
-        <SocketContext.Provider value={{socket, me}}>
+        <SocketContext.Provider value={{ socket, me, myVideo, stream }}>
             {children}
         </SocketContext.Provider>
     );

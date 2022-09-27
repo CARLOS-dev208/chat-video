@@ -11,11 +11,16 @@ export const Chat: NextPage = () => {
   const [mensagens, setMensagens] = useState<Msg[]>([]);
   const { socket, me } = useContext(SocketContext);
   useEffect(() => {
-    socket.on('message', (mensagem: Msg) => setMensagens(currentMsgs => [...currentMsgs, mensagem]))
+    socket.on('message', (mensagem: Msg) => {
+      new Audio("/notification.mp3").play();
+      setMensagens(currentMsgs => [...currentMsgs, mensagem])
+    })
   }, [socket])
   function handleKeyDown(e: KeyboardEvent) {
     if (e.code === "Enter") {
       e.preventDefault();
+      const msg =  {...me, message} as Msg
+      setMensagens(currentMsgs => [...currentMsgs, msg])
       socket.emit('message', {...me, message})
       setMessage("");
     }
