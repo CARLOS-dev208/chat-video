@@ -185,3 +185,11 @@ a {
     background-color: transparent;
   }
 }
+
+
+a.active,
+button.active,
+a:hover,
+button:hover {
+  background-color: #845695 !important;
+}

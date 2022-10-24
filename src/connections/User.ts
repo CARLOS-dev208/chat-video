@@ -1,24 +1,27 @@
 export class User {
     id: string;
     player: any;
-    pc: any;
-    dc!: RTCDataChannel;
-    
-    constructor(id: string) {
+    peerConnection: RTCPeerConnection;
+
+    constructor(id: string, peerConnection: RTCPeerConnection, users = new Map<string, User>()) {
         this.id = id;
+        this.peerConnection = peerConnection;
+        users.set(id, this)
     }
 
     selfDestroy() {
-        this.player && this.player.remove();
-        if (this.pc) {
-            this.pc.close()
-            this.pc.onicecandidate = null
-            this.pc.ontrack = null
-            this.pc = null
+        if (this.peerConnection) {
+            this.peerConnection.close()
+            this.peerConnection.onicecandidate = null
+            this.peerConnection.ontrack = null
         }
     }
 
-    sendMessage(message: string) {
-        this.dc && this.dc.send(message)
+    setRemoteDescription(answer: RTCSessionDescriptionInit) {
+        this.peerConnection.setRemoteDescription(answer)
+    }
+
+    addIceCandidate(candidate: RTCIceCandidate) {
+        this.peerConnection.addIceCandidate(candidate)
     }
 }

@@ -3,15 +3,11 @@ import { Server as ServerIO, Socket } from 'socket.io';
 
 import { NextApiResponseServerIO } from '../../types/next';
 import { RoomUser } from '../../types/room-user';
-import { escultarEventsChat } from '../../util/socketChat';
 import { eventsPeer } from '../../util/socketPeer';
+import { Message } from './../../types/room-user';
 
 import type { NextApiRequest } from "next";
-export default function SocketHandler(
-   req: NextApiRequest,
-   res: NextApiResponseServerIO
-) {
-   console.log("SocketHandler");
+export default function SocketHandler(req: NextApiRequest, res: NextApiResponseServerIO) {
    if (!res.socket.server.io) {
       const httpServer: NetServer = res.socket.server as any;
       const io = new ServerIO(httpServer, { path: "/api/socket" });
@@ -31,7 +27,10 @@ function eventSource(io: ServerIO, socket: Socket) {
       } else {
          users.push({ ...user, socketId: socket.id });
       }
-      escultarEventsChat(socket, io, users, user);
-      eventsPeer(socket, io, users, user)
+      const { room } = user;
+      io.to(room).emit("participants", users.filter(user => user.room === room));
+      socket.on("message", (message: Message) => socket.to(room).emit('message', message));
+      eventsPeer(socket, io, user);
+      socket.on('disconnect', () => io.emit('disconnect-user', { id: socket.id}));
    });
 }

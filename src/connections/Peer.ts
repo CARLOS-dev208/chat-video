@@ -3,45 +3,86 @@ import { Socket } from 'socket.io-client';
 
 import { User } from './User';
 
-export const createPeer = (user: User, socket: Socket, myStream: MediaStream, setPeers: Dispatch<SetStateAction<any[]>>) => {
-    const peerConnection = new RTCPeerConnection({iceServers: [{ urls: 'stun:stun.l.google.com:19302'}]})
-    peerConnection.onicecandidate = ({candidate}) => {
-        if(!candidate) return;
-        socket.emit('candidate', { id: user.id, candidate})
+export class PeerManager {
+    socket: Socket
+    users: Map<string, User>;
+    stream: MediaStream
+    setPeers: Dispatch<SetStateAction<any[]>>
+    constructor(users: Map<string, User>, socket: Socket, stream: MediaStream, setPeers: Dispatch<SetStateAction<any[]>>) {
+        this.socket = socket;
+        this.stream = stream;
+        this.users = users;
+        this.setPeers = setPeers
+        this.startEvents()
     }
-    myStream?.getTracks().forEach(track => peerConnection.addTrack(track, myStream));
-    peerConnection.ontrack =  ({streams}: RTCTrackEvent) => {
-        if (user.player) return;
-        setPeers(oldStrams => [...oldStrams, streams[0]])
-        user.player = true;
+
+    createPeerConnection({ id }: any) {
+        const peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        const user = new User(id, peerConnection, this.users)
+        this.onIcecandidate(user);
+        this.onTrack(user);
+        this.stream.getTracks().forEach(track => peerConnection.addTrack(track, this.stream));
+        return { peerConnection, user };
     }
-    peerConnection.ondatachannel =  ({channel}: RTCDataChannelEvent) => {
-        user.dc = channel
-        setupDataChannel(channel)
+
+    onIcecandidate = ({ id, peerConnection }: User) => {
+        peerConnection.onicecandidate = ({ candidate }) => {
+            if (candidate) this.socket.emit('candidate', { id: id, candidate });
+        }
     }
-    return peerConnection
+
+    onTrack = ({ peerConnection, ...user }: User) => {
+        
+        peerConnection.ontrack = ({ streams }: RTCTrackEvent) => {
+            if (!user.player) {
+                this.setPeers(oldStrams => [...oldStrams, streams[0]]);
+                user.player = true;
+            }
+        }
+    }
+
+    answerPeer = async (data: any) => {
+        const { peerConnection, user } = this.createPeerConnection(data)
+        await peerConnection.setRemoteDescription(data.offer);
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        this.socket.emit('answer', { id: user.id, answer })
+    }
+
+    createOffer = async (data: any) => {
+        const { peerConnection, user } = this.createPeerConnection(data)
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        this.socket.emit('offer', { id: user.id, offer })
+    }
+
+    getUser(id: string) {
+        return this.users.get(id);
+    }
+
+    setRemoteDescription = ({ answer, id }: any) => {
+        this.getUser(id)?.setRemoteDescription(answer)
+    }
+
+    addIceCandidate = ({ candidate, id }: any) => {
+        this.getUser(id)?.addIceCandidate(candidate)
+    }
+
+    startEvents() {
+        this.socket.on('call', this.createOffer);
+        this.socket.on('offer', this.answerPeer);
+        this.socket.on('answer', this.setRemoteDescription);
+        this.socket.on('candidate', this.addIceCandidate);
+        this.socket.on('disconnect-user', this.exit)
+    }
+
+    exit = (data: any) => {
+        let user = this.getUser(data.id)
+        if (user) {
+            this.users.delete(data.id)
+            user.selfDestroy()
+            this.setPeers(oldStrams => oldStrams.filter(({ active }) => active))
+        }
+    }
 }
 
-
-export const createOffer = async (user: User, socket: Socket) => {
-    user.dc = user.pc.createDataChannel('chat')
-    setupDataChannel(user.dc)
-    const offer: RTCSessionDescriptionInit = await user.pc.createOffer();
-    await user.pc.setLocalDescription(offer);
-    socket.emit('offer', {id: user.id, offer})
-}
-
-export const answerPeer = async (user: User, offer: RTCSessionDescriptionInit, socket: Socket) => {
-    await user.pc.setRemoteDescription(offer);
-    const answer: RTCSessionDescriptionInit = await user.pc.createAnswer();
-    await  user.pc.setLocalDescription(answer);
-    socket.emit('answer', {id: user.id, answer})
-}
-
-const setupDataChannel = (dataChannel: RTCDataChannel) => {
-    dataChannel.onopen = checkDataChannelState
-    dataChannel.onclose = checkDataChannelState
-    // dataChannel.onmessage = (e: any) => addMessage(e.data);
-}
-
-const checkDataChannelState = (dataChannel: any) => console.log('WebRTC channel state is:', dataChannel.type);
