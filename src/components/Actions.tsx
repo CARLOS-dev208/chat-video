@@ -9,12 +9,13 @@ import { Context } from '../context/Context';
 import { Video } from './Video';
 
 export const Actions: NextPage = () => {
-   const { local, remotes, sharing, handleShareScreenStart, handleShareScreenStop } = useContext(Context);
+   const { local, remotes, share, fixedScreen, handleShareScreenStart, onPeerLeave } = useContext(Context);
 
    return (
       <section className={styles.stream__container}>
          <div className={styles.stream__box}></div>
          <div className={styles.streams__container}>
+            {fixedScreen && <Video stream={fixedScreen}/>}
             <Video stream={local}/>
             {remotes.map((stream, key) => 
             <Video {...{key, stream}}/>
@@ -27,8 +28,8 @@ export const Actions: NextPage = () => {
             <button>
                <FoneButton />
             </button>
-            <button className={sharing ? styles.active : ''}
-               onClick={!sharing ? handleShareScreenStart : handleShareScreenStop}>
+            <button className={!share ? styles.active : ''}
+               onClick={share ? handleShareScreenStart : () => onPeerLeave(null, true)}>
                <ScreenButton />
             </button>
             <button>

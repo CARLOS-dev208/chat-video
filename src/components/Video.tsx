@@ -9,7 +9,7 @@ export const Video: NextPage = ({stream}) => {
       if(videoRef.current && stream){
          videoRef.current.srcObject = stream
          videoRef.current.onloadedmetadata = () => {
-            videoRef.current.play();
+            videoRef.current?.play();
          };
       }
    },[stream])

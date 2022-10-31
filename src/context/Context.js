@@ -8,6 +8,7 @@ var socket;
 const ICE_SERVERS = {iceServers: [{urls: 'stun:stun.l.google.com:19302'}]};
 const MediaProps = { audio: true, video: { width: 500, height: 500 } };
 const SESSIONS = new Map();
+var SESSION_SHARING;
 const participants = new Map();
 
 const ContextProvider = ({ children, room}) => {
@@ -15,7 +16,8 @@ const ContextProvider = ({ children, room}) => {
    const [local, setLocal] = useState()
    const [remotes, setRemotes] = useState([])
    const [messages, setMessages] = useState([])
-   const [sharing, setSharing] = useState(false)
+   const [share, setShare] = useState(true)
+   const [fixedScreen, setFixedScreen] = useState()
    const userStreamRef = useRef();
    const mediaStreamRef = useRef();
 
@@ -42,11 +44,15 @@ const ContextProvider = ({ children, room}) => {
       return () => { socket.disconnect(); }
    }, [])
 
+   useEffect(() => {
+      mediaStreamRef.current = fixedScreen
+   },[fixedScreen])
+
    const handleRoom = (id, host) => {
       navigator.mediaDevices.getUserMedia(MediaProps)
          .then((stream) => {
             userStreamRef.current = stream;
-            if(!local) setLocal(stream);
+            setLocal(stream);
             if(!host) socket.emit('ready');
             participants.set(id, me)
          })
@@ -55,125 +61,141 @@ const ContextProvider = ({ children, room}) => {
          });
    };
 
-   const createPeerConnection = (id) => {
+   const createPeerConnection = (id, sharing) => {
       const connection = new RTCPeerConnection(ICE_SERVERS);
       connection.onicecandidate = (event) => {
-         if (event.candidate) socket.emit('ice-candidate', id, event.candidate);
-      } 
-      userStreamRef.current?.getTracks()
-         .forEach(track => connection.addTrack(track, userStreamRef.current));
+         if (event.candidate) socket.emit('ice-candidate', id, event.candidate, sharing);
+      }
+      let streamRef = (sharing && mediaStreamRef.current) ?
+         mediaStreamRef.current : userStreamRef.current
+      streamRef?.getTracks().forEach(track => {
+         track.onended = () => onPeerLeave(id, sharing);
+         connection.addTrack(track, streamRef)
+      });
       connection.ontrack = (event) => {
-         setRemotes(oldRemotes => {
-            if(!oldRemotes.find(stream => stream.id == event.streams[0].id)){
-               return [...oldRemotes, event.streams[0]]
+         event.streams[0]?.getTracks().forEach(track => {
+            track.onended = () => {
+               setRemotes(oldRemotes => oldRemotes.filter(remote => remote.active))
             }
-            return oldRemotes
          })
+         if(sharing && mediaStreamRef.current?.id == event.streams[0].id
+         || sharing && !mediaStreamRef.current){
+            setFixedScreen(event.streams[0])
+         }else{
+            setRemotes(oldRemotes => {
+               if(event.streams[0].active 
+                  && !oldRemotes.find(stream => stream.id == event.streams[0].id)){
+                  return [...oldRemotes, event.streams[0]]
+               }
+               return oldRemotes
+            })
+         }
       };
       return connection;
    };
 
-   const initiateCall = (id, userName) => {
+   const initiateCall = (id, userName, sharing) => {
       console.log("Call!")
-      let SESSION = {}
-      SESSION.rtc = createPeerConnection(id);
-      SESSION.rtc.createOffer().then((offer) => {
-         SESSION.rtc.setLocalDescription(offer);
-         socket.emit('offer', id, offer);
+      let SESSION = createPeerConnection(id, sharing);
+      SESSION.createOffer().then((offer) => {
+         SESSION.setLocalDescription(offer);
+         socket.emit('offer', id, offer, sharing);
       }).catch((error) => {console.log(error);});
-      SESSIONS.set(id, SESSION)
-      participants.set(id, userName)
+      if(!sharing){
+         SESSIONS.set(id, SESSION)
+         participants.set(id, userName)
+         if(SESSION_SHARING){
+            socket.emit('ready-sharing')
+         }
+      }else{
+         SESSION_SHARING = SESSION
+      }
    };
 
-   const handleReceivedOffer = (id, userName, offer) => {
+   const handleReceivedOffer = (id, userName, offer, sharing) => {
       console.log("Offer!")
-      let SESSION = SESSIONS.get(id)
+      let SESSION = !sharing ? SESSIONS.get(id) : SESSION_SHARING
       if(SESSION){
-         handleAnswerPeer(id, SESSION, offer)
+         handleAnswerPeer(id, SESSION, offer, sharing)
       }else{
-         SESSION = {}
-         SESSION.rtc = createPeerConnection(id);
-         SESSIONS.set(id, SESSION)
-         handleAnswerPeer(id, SESSION, offer)
+         SESSION = createPeerConnection(id, sharing);
+         handleAnswerPeer(id, SESSION, offer, sharing)
+         if(!sharing){
+            SESSIONS.set(id, SESSION)
+         }else{
+            SESSION_SHARING = SESSION
+         }
       }
       participants.set(id, userName)
    };
 
-   const handleAnswerPeer = (id, SESSION, offer) => {
-      SESSION.rtc.setRemoteDescription(offer);
-      SESSION.rtc.createAnswer()
+   const handleAnswerPeer = (id, SESSION, offer, sharing) => {
+      SESSION.setRemoteDescription(offer);
+      SESSION.createAnswer()
          .then((answer) => {
-            SESSION.rtc.setLocalDescription(answer);
-            socket.emit('answer', id, answer);
+            SESSION.setLocalDescription(answer);
+            socket.emit('answer', id, answer, sharing);
          })
          .catch((error) => {
             console.log(error);
          });
    }
 
-   const handleAnswerOffer = (id, answer) => {
-      let SESSION = SESSIONS.get(id)
+   const handleAnswerOffer = (id, answer, sharing) => {
+      let SESSION = !sharing ? SESSIONS.get(id) : SESSION_SHARING
       if(SESSION){
-         SESSION.rtc.setRemoteDescription(answer).catch((err) => console.log(err));
-         if(mediaStreamRef.current){
-            replaceTrack(SESSION.rtc, mediaStreamRef.current.getVideoTracks()[0])
+         SESSION.setRemoteDescription(answer).catch((err) => console.log(err));
+      }
+   };
+
+   const handlerNewIceCandidateMsg = (id, candidate, sharing) => {
+      let SESSION = !sharing ? SESSIONS.get(id) : SESSION_SHARING
+      if(SESSION){
+         SESSION.addIceCandidate(candidate).catch((e) => console.log(e));
+      }else{
+         SESSION = createPeerConnection(id, sharing);
+         SESSION.addIceCandidate(candidate).catch((e) => console.log(e));
+         if(!sharing){
+            SESSIONS.set(id, SESSION)
+         }else{
+            SESSION_SHARING = SESSION
          }
       }
    };
 
-   const handlerNewIceCandidateMsg = (id, candidate) => {
-      let SESSION = SESSIONS.get(id)
-      if(SESSION){
-         SESSION.rtc.addIceCandidate(candidate).catch((e) => console.log(e));
-      }else{
-         let SESSION = {} 
-         SESSION.rtc = createPeerConnection(id);
-         SESSION.rtc.addIceCandidate(candidate).catch((e) => console.log(e));
-         SESSIONS.set(id, SESSION)
-      }
-   };
-
-   const onPeerLeave = (id) => {
-      let SESSION = SESSIONS.get(id)
+   const onPeerLeave = (id, sharing) => {
+      console.log("Leave")
+      let SESSION = !sharing ? SESSIONS.get(id) : SESSION_SHARING
       if (SESSION) {
-         SESSION.rtc.ontrack = null;
-         SESSION.rtc.onicecandidate = null;
-         SESSION.rtc.close();
-         SESSIONS.delete(id)
-         participants.delete(id)
+         SESSION.ontrack = null;
+         SESSION.onicecandidate = null;
+         SESSION.close();
+         if(!sharing){
+            SESSIONS.delete(id)
+            participants.delete(id)
+         }else{
+            fixedScreen?.getTracks().forEach(track => track.stop());
+            SESSION_SHARING = null
+            mediaStreamRef.current = null
+            setFixedScreen(null)
+            socket.emit('leave', socket.id)
+            setShare(true)
+         }
       }
-      setRemotes(oldRemotes => oldRemotes.filter(remote => remote.active))
    }
    
    const handleShareScreenStart = () => {
+      if(mediaStreamRef.current) { onPeerLeave(null, true); }
       navigator.mediaDevices.getDisplayMedia()
          .then((stream) => {
-            [...SESSIONS.values()].map(session => replaceTrack(session.rtc, stream.getVideoTracks()[0]))
-            stream.getVideoTracks().map(track => track.onended = () => handleShareScreenStop())
             mediaStreamRef.current = stream;
-            setLocal(stream)
-            setSharing(true)
+            setFixedScreen(stream)
+            socket.emit('ready-sharing')
+            setShare(false)
          })
          .catch((err) => {
             console.log(err)
          });
-   }
-
-   const handleShareScreenStop = () => {
-      [...SESSIONS.values()].map(session => replaceTrack(session.rtc, userStreamRef.current?.getVideoTracks()[0]))
-      setLocal(userStreamRef.current)
-      mediaStreamRef.current?.getTracks().map(track => track.stop())
-      mediaStreamRef.current = null
-      setSharing(false)
-   }
-
-   const replaceTrack = (peer, track) => {
-      const sender = peer.getSenders().find(sender => sender.track.kind === track.kind);
-      if (!sender) {
-         console.warn('failed to find sender');
-         return;
-      }
-      sender.replaceTrack(track);
    }
 
    return (
@@ -182,12 +204,14 @@ const ContextProvider = ({ children, room}) => {
          participants,
          local,
          remotes,
+         share,
+         mediaStreamRef,
+         fixedScreen,
          messages,
          me,
          room,
-         sharing,
          handleShareScreenStart,
-         handleShareScreenStop
+         onPeerLeave,
       }}>
          {children}
       </Context.Provider>
