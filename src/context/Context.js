@@ -109,7 +109,7 @@ const ContextProvider = ({ children, room}) => {
 
    const handleReceivedOffer = (id, userName, offer, sharing) => {
       console.log("Offer!")
-      let SESSION = !sharing ? SESSIONS.get(id) : SESSION_SHARING
+      let SESSION = !sharing && SESSIONS.get(id)
       if(SESSION){
          handleAnswerPeer(id, SESSION, offer, sharing)
       }else{
@@ -169,18 +169,20 @@ const ContextProvider = ({ children, room}) => {
             SESSIONS.delete(id)
             participants.delete(id)
          }else{
-            fixedScreen?.getTracks().forEach(track => track.stop());
+            setFixedScreen(oldFixedScreen => {
+               oldFixedScreen?.getTracks().forEach(track => track.stop());
+               return;
+            })
             SESSION_SHARING = null
             mediaStreamRef.current = null
-            setFixedScreen(null)
-            socket.emit('leave', socket.id)
             setShare(true)
          }
+         socket.emit('leave', sharing)
       }
    }
    
    const handleShareScreenStart = () => {
-      if(mediaStreamRef.current) { onPeerLeave(null, true); }
+      onPeerLeave(null, true)
       navigator.mediaDevices.getDisplayMedia()
          .then((stream) => {
             mediaStreamRef.current = stream;
