@@ -44,10 +44,6 @@ const ContextProvider = ({ children, room}) => {
       return () => { socket.disconnect(); }
    }, [])
 
-   useEffect(() => {
-      mediaStreamRef.current = fixedScreen
-   },[fixedScreen])
-
    const handleRoom = (id, host) => {
       navigator.mediaDevices.getUserMedia(MediaProps)
          .then((stream) => {
@@ -78,8 +74,7 @@ const ContextProvider = ({ children, room}) => {
                setRemotes(oldRemotes => oldRemotes.filter(remote => remote.active))
             }
          })
-         if(sharing && mediaStreamRef.current?.id == event.streams[0].id
-         || sharing && !mediaStreamRef.current){
+         if(sharing && (mediaStreamRef.current?.id == event.streams[0].id || !mediaStreamRef.current)){
             setFixedScreen(event.streams[0])
          }else{
             setRemotes(oldRemotes => {
@@ -104,8 +99,8 @@ const ContextProvider = ({ children, room}) => {
       if(!sharing){
          SESSIONS.set(id, SESSION)
          participants.set(id, userName)
-         if(SESSION_SHARING){
-            socket.emit('ready-sharing')
+         if(mediaStreamRef.current){
+            initiateCall(id, userName, true)
          }
       }else{
          SESSION_SHARING = SESSION
