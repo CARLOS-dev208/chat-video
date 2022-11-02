@@ -176,8 +176,8 @@ const ContextProvider = ({ children, room}) => {
             SESSION_SHARING = null
             mediaStreamRef.current = null
             setShare(true)
+            socket.emit('leave', sharing)
          }
-         socket.emit('leave', sharing)
       }
    }
    
